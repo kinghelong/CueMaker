@@ -16,7 +16,7 @@ extern double g_scrollOffset;
 extern int clickX, g_currentTimeMs, g_musicLengthMs;
 
 // ===== 新增：存储点击位置对应的实际音频时间 =====
-static double g_clickTimeRatio = -1.0;  // 点击位置对应的时间比例 (0.0 ~ 1.0)
+extern double g_clickTimeRatio ;  // 点击位置对应的时间比例 (0.0 ~ 1.0)
 
 bool DrawTimeLine(HDC hdc, RECT rect, double musicLengthInS);
 
@@ -231,11 +231,9 @@ void DrawDualChannelWaveform(HDC hdc, HWND hWnd)
         DeleteObject(darkPen);
     }
 
-    // ===== 修复后的播放线绘制 =====
-    if (g_clickTimeRatio >= 0.0)
+    // ===== 修复后的播放线绘制 =====   
     {
         // 计算播放线的屏幕 X 坐标
-        // 公式：(时间比例 × 缩放后总宽度) - 滚动偏移
         double zoomedTotalWidth = width * g_zoomFactor;
         int playX = (int)(g_clickTimeRatio * zoomedTotalWidth - g_scrollOffset);
 
@@ -245,7 +243,7 @@ void DrawDualChannelWaveform(HDC hdc, HWND hWnd)
             HPEN hPen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
             HPEN hOldPen = (HPEN)SelectObject(memDC, hPen);
 
-            // 绘制竖线（从顶部到底部，不包括时间轴）
+            // 绘制竖线
             MoveToEx(memDC, playX, 0, NULL);
             LineTo(memDC, playX, waveArea.bottom);
 
