@@ -38,7 +38,7 @@ struct WavInfo {
         return wf.nBlockAlign;
     }
 };
-
+WAVEFORMATEX g_wav;
 static HANDLE g_playThread = NULL;
 static PlayControl g_ctrl;
 static bool g_ctrlInited = false;
@@ -149,6 +149,7 @@ unsigned int __stdcall PlayThreadProc(void* param)
             result = E_FAIL;
             break;
         }
+        g_wav = wavInfo.wf;
 
         // 计算音乐总时长
         if (wavInfo.GetBytesPerSecond() > 0) {

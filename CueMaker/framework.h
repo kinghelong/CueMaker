@@ -99,6 +99,7 @@ struct ChannelLayout {
 int read_wav_header(HANDLE hFile, wave_header* pWaveHeader);
 int write_wav_header(HANDLE hFile, wave_header* pWaveHeader, int sampleRate, int channels, int dataBytes, int bitsPerSample);
 LRESULT CALLBACK    WaveCtrlProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK TrackBarSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 void                DrawDualChannelWaveform(HDC hdc, HWND hWnd); // 双声道波形绘制
 std::wstring        FormatTime(int ms);
@@ -131,7 +132,7 @@ bool GenerateCueFile();
 unsigned int __stdcall PlayAudioThread(void* pParam);
 void StartPlay(const wchar_t* fileName);
 void PausePlay();
-void SeekPlay(double sec, WAVEFORMATEX* wf = nullptr);
+void SeekPlay(double seconds, int sampleRate, int channels, int bitsPerSample);
 void StopPlay();
 
 //播放进度ui更新
