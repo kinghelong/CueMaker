@@ -467,8 +467,6 @@ void StartPlay(const wchar_t* file)
         NULL
     );
 }
-
-
 void PausePlay()
 {
     if (!g_playThread) return;
