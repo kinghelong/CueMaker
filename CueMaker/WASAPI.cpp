@@ -443,7 +443,7 @@ void StartPlay(const wchar_t* file)
     InitPlayer();
 
     // 停止已有的播放
-    StopPlay();
+    PausePlay();
 
     // 重置控制状态
     EnterCriticalSection(&g_ctrl.cs);
