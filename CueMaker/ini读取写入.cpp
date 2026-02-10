@@ -185,3 +185,43 @@ bool readWorkStateFromIni(const wchar_t* iniPath, std::wstring& outAudioFile, st
 	outWorkCompleted = _wtoi(buffer);
 	return true;
 }
+
+int workStationIni(HWND hWnd, std::vector<std::wstring>& albumIniList)
+{
+	wchar_t exeDir[MAX_PATH];
+	GetExeDirectory(exeDir, MAX_PATH);
+	std::wstring searchPath = exeDir;
+	if (searchPath.back() != L'\\')
+		searchPath += L'\\';
+	searchPath += L"*.ini"; 
+
+	WIN32_FIND_DATAW ffd{};
+	HANDLE hFind = FindFirstFileW(searchPath.c_str(), &ffd);
+
+	if (hFind == INVALID_HANDLE_VALUE)
+	{
+		wchar_t msg[256];
+		swprintf_s(msg, L"FindFirstFile failed (%lu)", GetLastError());
+		MessageBoxW(hWnd, msg, L"Error", MB_OK);
+		return 0;
+	}
+	do
+	{
+		if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			continue;
+
+		if (_wcsicmp(ffd.cFileName, L"CueMakerState.ini") == 0)
+			continue;
+
+		std::wstring fullPath = exeDir;
+		if (fullPath.back() != L'\\')
+			fullPath += L'\\';
+		fullPath += ffd.cFileName;
+
+		albumIniList.push_back(fullPath);
+
+	} while (FindNextFileW(hFind, &ffd));
+
+	FindClose(hFind);
+	return (int)albumIniList.size();
+}

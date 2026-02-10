@@ -96,10 +96,10 @@ struct ChannelLayout {
 	RECT rectRight;
 	bool isStereo;
 };
-int read_wav_header(HANDLE hFile, wave_header* pWaveHeader);
-int write_wav_header(HANDLE hFile, wave_header* pWaveHeader, int sampleRate, int channels, int dataBytes, int bitsPerSample);
+int                 read_wav_header(HANDLE hFile, wave_header* pWaveHeader);
+int                 write_wav_header(HANDLE hFile, wave_header* pWaveHeader, int sampleRate, int channels, int dataBytes, int bitsPerSample);
 LRESULT CALLBACK    WaveCtrlProc(HWND, UINT, WPARAM, LPARAM);
-LRESULT CALLBACK TrackBarSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK    TrackBarSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 void                DrawDualChannelWaveform(HDC hdc, HWND hWnd); // 双声道波形绘制
 std::wstring        FormatTime(int ms);
@@ -115,6 +115,7 @@ std::wstring ReplaceExt(const std::wstring& srcPath, std::wstring ext);// 替换
 bool saveWorkStateToIni(const wchar_t* iniPath, const wchar_t* audioFilePath, const wchar_t* albumIniFile, const wchar_t* cueFile, int workCompleted);// 保存工作状态到INI文件	
 bool readWorkStateFromIni(const wchar_t* iniPath, std::wstring& outAudioFile, std::wstring& outAlbumIniFile, std::wstring& outCueFile, int& outWorkCompleted);// 从INI文件读取工作状态
 bool ReadIniFile(const std::wstring& filePath, std::map<std::wstring, std::wstring>& outData);
+int workStationIni(HWND hWnd, std::vector<std::wstring>& albumIniList);
 
 
 //音频处理相关
@@ -137,3 +138,5 @@ void StopPlay();
 
 //播放进度ui更新
 void CalculateFinalLayout(RECT clientRect, int numChannels, RECT& waveArea, RECT& timeArea, ChannelLayout& layout);
+void InitSwitchImageList(HINSTANCE hInstance);
+void ChangeToolBarBtnIcon(HWND hToolbar, UINT nCmdID, int nNewBmpIdx);

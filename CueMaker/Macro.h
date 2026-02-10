@@ -9,6 +9,11 @@
 #define IDC_TIME_DISPLAY            2005  // 播放时间显示
 #define IDC_STATIC_MUTE_TIP         2007 
 #define IDC_STATIC_VOLUM_TIP        2008
+#define IDC_LIST_MUSIC              2009  // 左侧列表框
+#define IDC_ALBUM_LIST              2010
+#define IDC_WAVE_DRAW_WINDOW        2011  // 波形客户区
+#define IDC_TAB                     2012  // 页选
+
 
 // 工具栏按钮ID
 #define ID_TOOL_TOP_OPEN            3001

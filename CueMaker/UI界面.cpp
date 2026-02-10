@@ -19,6 +19,8 @@ extern HBITMAP g_hToolbarTopBmp;
 extern HIMAGELIST g_hImageListTop;
 extern HBITMAP g_hToolbarBottomBmp;
 extern HIMAGELIST g_hImageListBottom;
+HIMAGELIST g_hImgSwitch = NULL;
+
 
 // UI 控件句柄
 HWND hTime = NULL;      // 时间显示控件
@@ -67,10 +69,7 @@ LRESULT CALLBACK TrackBarSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
         {
             if (g_wav.nSamplesPerSec > 0)
             {
-                SeekPlay((double)newPosSec,
-                    g_wav.nSamplesPerSec,
-                    g_wav.nChannels,
-                    g_wav.wBitsPerSample);
+                SeekPlay((double)newPosSec, g_wav.nSamplesPerSec, g_wav.nChannels, g_wav.wBitsPerSample);
             }
             g_currentTimeMs = newPosMs;
         }
@@ -112,10 +111,7 @@ LRESULT CALLBACK TrackBarSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 
         if (g_wav.nSamplesPerSec > 0)
         {
-            SeekPlay((double)newPosSec,
-                g_wav.nSamplesPerSec,
-                g_wav.nChannels,
-                g_wav.wBitsPerSample);
+            SeekPlay((double)newPosSec, g_wav.nSamplesPerSec, g_wav.nChannels, g_wav.wBitsPerSample);
         }
 
         g_currentTimeMs = newPosSec * 1000;
@@ -362,17 +358,7 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 HWND CreateToolbarTop(HWND hWnd, HINSTANCE hInstance)
 {
     // 创建工具栏
-    HWND hToolbar = CreateWindowEx(
-        0,
-        TOOLBARCLASSNAME,
-        NULL,
-        WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_TOP,
-        0, 0, 0, 0,
-        hWnd,
-        (HMENU)IDC_TOOLBAR_TOP,
-        hInstance,
-        NULL
-    );
+    HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_TOP, 0, 0, 0, 0, hWnd, (HMENU)IDC_TOOLBAR_TOP, hInstance, NULL);
 
     if (!hToolbar) return NULL;
 
@@ -380,86 +366,34 @@ HWND CreateToolbarTop(HWND hWnd, HINSTANCE hInstance)
     HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
     // 创建静音阈值编辑框
-    HWND hEdit = CreateWindowEx(
-        WS_EX_CLIENTEDGE,
-        L"EDIT",
-        L"0",
-        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_LEFT | ES_NUMBER,
-        638, 10, 50, 22,
-        hToolbar,
-        (HMENU)IDC_MUTE_EDIT,
-        hInstance,
-        NULL
-    );
+    HWND hEdit = CreateWindowEx(WS_EX_CLIENTEDGE, L"EDIT", L"0", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_LEFT | ES_NUMBER, 638, 10, 50, 22, hToolbar, (HMENU)IDC_MUTE_EDIT, hInstance, NULL);
     SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);
 
     // 创建音量滑块
-    HWND hVolumeSlider = CreateWindow(
-        TRACKBAR_CLASS,
-        L"",
-        WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ,
-        720, 10, 100, 22,
-        hToolbar,
-        (HMENU)IDC_VOLUME_SLIDER,
-        hInstance,
-        NULL
-    );
+    HWND hVolumeSlider = CreateWindow(TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_HORZ, 720, 10, 100, 22, hToolbar, (HMENU)IDC_VOLUME_SLIDER, hInstance, NULL);
     SendMessage(hVolumeSlider, TBM_SETRANGE, TRUE, MAKELONG(0, 100));
     SendMessage(hVolumeSlider, TBM_SETPOS, TRUE, 80);
 
     // 创建静态文本（静音阈值提示）
-    HWND hStaticMute = CreateWindowEx(
-        0,
-        L"STATIC",
-        L"静音区阈值",
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        638, 37, 60, 16,
-        hToolbar,
-        (HMENU)IDC_STATIC_MUTE_TIP,
-        hInstance,
-        NULL
-    );
+    HWND hStaticMute = CreateWindowEx(0, L"STATIC", L"静音区阈值", WS_CHILD | WS_VISIBLE | SS_LEFT, 638, 37, 60, 16, hToolbar, (HMENU)IDC_STATIC_MUTE_TIP, hInstance, NULL);
     SendMessage(hStaticMute, WM_SETFONT, (WPARAM)hFont, TRUE);
 
     // 创建静态文本（音量提示）
-    HWND hStaticVolume = CreateWindowEx(
-        0,
-        L"STATIC",
-        L"音量",
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        720, 37, 50, 16,
-        hToolbar,
-        (HMENU)IDC_STATIC_VOLUM_TIP,
-        hInstance,
-        NULL
-    );
+    HWND hStaticVolume = CreateWindowEx(0, L"STATIC", L"音量", WS_CHILD | WS_VISIBLE | SS_LEFT, 720, 37, 50, 16, hToolbar, (HMENU)IDC_STATIC_VOLUM_TIP, hInstance, NULL);
     SendMessage(hStaticVolume, WM_SETFONT, (WPARAM)hFont, TRUE);
 
     // 初始化工具栏
     SendMessage(hToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
     // 加载位图
-    HBITMAP hBmp = (HBITMAP)LoadImage(
-        hInstance,
-        MAKEINTRESOURCE(IDB_TOPBAR_REMAKE),
-        IMAGE_BITMAP,
-        0, 0,
-        LR_CREATEDIBSECTION
-    );
-
+    HBITMAP hBmp = (HBITMAP)LoadImage(hInstance, MAKEINTRESOURCE(IDB_TOPBAR_REMAKE), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
     if (!hBmp) return hToolbar;
 
     const int BTN_SIZE = TOOLBAR_HEIGHT;
     const int BTN_COUNT = 11;
 
     // 创建图像列表
-    HIMAGELIST hImg = ImageList_Create(
-        BTN_SIZE,
-        BTN_SIZE,
-        ILC_COLOR32 | ILC_MASK,
-        BTN_COUNT,
-        0
-    );
+    HIMAGELIST hImg = ImageList_Create(BTN_SIZE, BTN_SIZE, ILC_COLOR32 | ILC_MASK, BTN_COUNT, 0);
     ImageList_Add(hImg, hBmp, NULL);
     DeleteObject(hBmp);
 
@@ -496,17 +430,7 @@ HWND CreateToolbarTop(HWND hWnd, HINSTANCE hInstance)
 HWND CreateToolbarBottom(HWND hWnd, HINSTANCE hInstance)
 {
     // 创建工具栏
-    HWND hToolbar = CreateWindowEx(
-        0,
-        TOOLBARCLASSNAME,
-        NULL,
-        WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_BOTTOM,
-        0, 0, 0, 0,
-        hWnd,
-        (HMENU)IDC_TOOLBAR_BOTTOM,
-        hInstance,
-        NULL
-    );
+    HWND hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_BOTTOM, 0, 0, 0, 0, hWnd, (HMENU)IDC_TOOLBAR_BOTTOM, hInstance, NULL);
 
     if (!hToolbar) return NULL;
 
@@ -514,26 +438,14 @@ HWND CreateToolbarBottom(HWND hWnd, HINSTANCE hInstance)
     SendMessage(hToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
 
     // 加载播放按钮位图
-    HBITMAP hBmp = (HBITMAP)LoadImage(
-        hInstance,
-        MAKEINTRESOURCE(IDB_PLAYBAR),
-        IMAGE_BITMAP,
-        0, 0,
-        LR_CREATEDIBSECTION
-    );
+    HBITMAP hBmp = (HBITMAP)LoadImage(hInstance, MAKEINTRESOURCE(IDB_PLAYBAR), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
 
     if (!hBmp) return hToolbar;
 
     const int BTN_SIZE = 48;
 
     // 创建图像列表
-    HIMAGELIST hImg = ImageList_Create(
-        BTN_SIZE,
-        BTN_SIZE,
-        ILC_COLOR32 | ILC_MASK,
-        BOTTOM_BTN_COUNT,
-        0
-    );
+    HIMAGELIST hImg = ImageList_Create(BTN_SIZE, BTN_SIZE, ILC_COLOR32 | ILC_MASK, BOTTOM_BTN_COUNT, 0);
     ImageList_Add(hImg, hBmp, NULL);
     DeleteObject(hBmp);
 
@@ -576,20 +488,7 @@ HWND CreateToolbarBottom(HWND hWnd, HINSTANCE hInstance)
         int trackHeight = 24;
         int trackY = rcTrack.top + (rcTrack.bottom - rcTrack.top - trackHeight) / 2;
 
-        hTrack = CreateWindowEx(
-            0,
-            TRACKBAR_CLASS,
-            L"",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS,
-            rcTrack.left,
-            trackY,
-            rcTrack.right - rcTrack.left,
-            trackHeight,
-            hToolbar,
-            (HMENU)IDC_PROGRESS,
-            hInstance,
-            NULL
-        );
+        hTrack = CreateWindowEx(0, TRACKBAR_CLASS, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, rcTrack.left, trackY, rcTrack.right - rcTrack.left, trackHeight, hToolbar, (HMENU)IDC_PROGRESS, hInstance, NULL);
 
         if (hTrack)
         {
@@ -615,35 +514,12 @@ HWND CreateToolbarBottom(HWND hWnd, HINSTANCE hInstance)
         int timeHeight = 32;
         int timeY = rcTime.top + (rcTime.bottom - rcTime.top - timeHeight) / 2;
 
-        hTime = CreateWindowEx(
-            0,
-            L"STATIC",
-            L"00:00 / 00:00",
-            WS_CHILD | WS_VISIBLE | SS_CENTER,
-            rcTime.left,
-            timeY,
-            rcTime.right - rcTime.left,
-            timeHeight,
-            hToolbar,
-            (HMENU)IDC_TIME_DISPLAY,
-            hInstance,
-            NULL
-        );
+        hTime = CreateWindowEx(0, L"STATIC", L"00:00 / 00:00", WS_CHILD | WS_VISIBLE | SS_CENTER, rcTime.left, timeY, rcTime.right - rcTime.left, timeHeight, hToolbar, (HMENU)IDC_TIME_DISPLAY, hInstance, NULL);
 
         if (hTime)
         {
             // 创建字体
-            HFONT hFont = CreateFont(
-                22, 0, 0, 0,
-                FW_BOLD,
-                FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                DEFAULT_PITCH | FF_DONTCARE,
-                L"Segoe UI"
-            );
+            HFONT hFont = CreateFont(32, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
             if (hFont)
             {
@@ -679,4 +555,35 @@ void CleanupToolbarResources()
         SetWindowLongPtr(hTrack, GWLP_WNDPROC, (LONG_PTR)g_pOldTrackBarProc);
         g_pOldTrackBarProc = nullptr;
     }
+}
+
+// 初始化切换用的ImageList（程序启动时调用，在CreateToolbarBottom之后）
+void InitSwitchImageList(HINSTANCE hInstance)
+{
+    const int BTN_SIZE = 48;
+    // 加载切换用的位图（播放按钮变灰/暂停的版本）
+    HBITMAP hBmpSwitch = (HBITMAP)LoadImage(hInstance, MAKEINTRESOURCE(IDB_PLAY_SWITCH), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+    if (hBmpSwitch)
+    {
+        g_hImgSwitch = ImageList_Create(BTN_SIZE, BTN_SIZE, ILC_COLOR32 | ILC_MASK, BOTTOM_BTN_COUNT, 0);
+        ImageList_Add(g_hImgSwitch, hBmpSwitch, NULL);
+        DeleteObject(hBmpSwitch);
+    }
+}
+
+// 改工具栏单个按钮的图标（ImageList模式专用）
+// hToolbar：工具栏句柄
+// nCmdID：按钮ID（比如ID_MUSIC_PLAY）
+// nNewBmpIdx：新的ImageList索引
+void ChangeToolBarBtnIcon(HWND hToolbar, UINT nCmdID, int nNewBmpIdx)
+{
+    if (!hToolbar || !IsWindow(hToolbar)) return;
+
+    TBBUTTONINFO tbbi = { 0 };
+    tbbi.cbSize = sizeof(TBBUTTONINFO);
+    tbbi.dwMask = TBIF_IMAGE; // 只改图标索引
+    tbbi.iImage = nNewBmpIdx; // 新的ImageList索引
+
+    // 关键API：修改单个按钮的信息（只改图标，不影响其他）
+    SendMessage(hToolbar, TB_SETBUTTONINFO, (WPARAM)nCmdID, (LPARAM)&tbbi);
 }

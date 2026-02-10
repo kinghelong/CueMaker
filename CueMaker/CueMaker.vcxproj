@@ -155,6 +155,7 @@
     <Image Include="CueMaker.ico" />
     <Image Include="playbar.bmp" />
     <Image Include="playbar.png" />
+    <Image Include="play_state_swicth.bmp" />
     <Image Include="small.ico" />
     <Image Include="topToolBar.bmp" />
     <Image Include="topToolBarRemake.bmp" />

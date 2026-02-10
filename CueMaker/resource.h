@@ -17,6 +17,8 @@
 #define IDB_TOP_BAR                     133
 #define IDB_TOPBAR_REMAKE               135
 #define IDD_ALBUM_INFO                  136
+#define IDB_BITMAP2                     141
+#define IDB_PLAY_SWITCH                 141
 #define IDC_ALBUM_OK                    1000
 #define IDC_ALBUM_CANCEL                1001
 #define IDC_TRACK_LIST                  1002
@@ -40,7 +42,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
-#define _APS_NEXT_RESOURCE_VALUE        137
+#define _APS_NEXT_RESOURCE_VALUE        143
 #define _APS_NEXT_COMMAND_VALUE         32773
 #define _APS_NEXT_CONTROL_VALUE         1017
 #define _APS_NEXT_SYMED_VALUE           110

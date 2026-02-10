@@ -37,6 +37,7 @@ bool g_isDraggingTrackBar = false;
 // TrackBar 子类化相关全局变量
 extern WNDPROC g_pOldTrackBarProc ; // 保存TrackBar原始窗口过程
 extern bool g_isDraggingTrackBar ;    // 拖动标记（仅作用于TrackBar）
+extern HIMAGELIST g_hImgSwitch ;
 
 // 全局变量:
 HINSTANCE hInst;
@@ -195,7 +196,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     const int PADDING = 10; // 边距
     static int toptool_height = 0;
     static UINT_PTR g_timerPlay = 0; // 保存定时器ID
-
+    static HWND hTop = 0, hBot = 0;
+    static HWND hListAlbums = 0;
+    static HWND hTab = 0;
+    static std::vector<std::wstring> albumIniList;
     switch (message)
     {
     case WM_CREATE:
@@ -203,17 +207,47 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         hInst = ((LPCREATESTRUCT)lParam)->hInstance;
 
         // 1. 创建工具栏
-        HWND hTop = CreateToolbarTop(hWnd, hInst);
-        HWND hBot = CreateToolbarBottom(hWnd, hInst);
+        hTop = CreateToolbarTop(hWnd, hInst);
+        hBot = CreateToolbarBottom(hWnd, hInst);
+        InitSwitchImageList(hInst);
         RECT rc;
         GetClientRect(hTop, &rc);
         toptool_height = abs(rc.top - rc.bottom);
         // 保存定时器ID，方便后续销毁
         g_timerPlay = SetTimer(hWnd, TIMER_PLAY, 20, NULL); // 20ms 更新一次
-        g_hTrackList = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 0, toptool_height, 0, 0, hWnd, (HMENU)10101, hInst, nullptr);
-        g_hWaveView = CreateWindowExW(WS_EX_CLIENTEDGE, L"WAVE_CTRL_CLASS", L"", WS_CHILD | WS_VISIBLE, 0, toptool_height, 0, 0, hWnd, (HMENU)10102, hInst, nullptr);
+        g_hTrackList = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 0, toptool_height + 30, 0, 0, hWnd, (HMENU)IDC_LIST_MUSIC, hInst, nullptr);
+        hListAlbums = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", nullptr, WS_CHILD | WS_VSCROLL | LBS_NOTIFY, 0, toptool_height + 30, 0, 0, hWnd, (HMENU)IDC_ALBUM_LIST, hInst, nullptr);
+        g_hWaveView = CreateWindowExW(WS_EX_CLIENTEDGE, L"WAVE_CTRL_CLASS", L"", WS_CHILD | WS_VISIBLE, 0, toptool_height, 0, 0, hWnd, (HMENU)IDC_WAVE_DRAW_WINDOW, hInst, nullptr);
+        hTab = CreateWindowExW(0, WC_TABCONTROL, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 0, toptool_height, 300, 30, hWnd, (HMENU)IDC_TAB, hInst, nullptr);
+        TCITEMW ti{};
+        ti.mask = TCIF_TEXT;
+        ti.pszText = (LPWSTR)L"Tracks";
+        TabCtrl_InsertItem(hTab, 0, &ti);
+        ti.pszText = (LPWSTR)L"Albums";
+        TabCtrl_InsertItem(hTab, 1, &ti);
+        workStationIni(hWnd, albumIniList);
+
+        for (const auto& iniPath : albumIniList)
+        {
+            SendMessageW(hListAlbums, LB_ADDSTRING, 0, (LPARAM)iniPath.c_str());
+        }
+        ShowWindow(hListAlbums, SW_HIDE);
+
         return 0;
     }
+    case WM_NOTIFY:
+    {
+        LPNMHDR hdr = (LPNMHDR)lParam;
+        if (hdr->hwndFrom == hTab && hdr->code == TCN_SELCHANGE)
+        {
+            int sel = TabCtrl_GetCurSel(hTab);
+
+            ShowWindow(g_hTrackList, sel == 0 ? SW_SHOW : SW_HIDE);
+            ShowWindow(hListAlbums, sel == 1 ? SW_SHOW : SW_HIDE);
+        }
+    }
+    break;
+
     case WM_TIMER:
     {
         int s = 0;
@@ -421,8 +455,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
         case ID_MUSIC_PLAY:
         {
+            if (extractFileName.empty())
+                return 0;
             StartPlay(extractFileName.c_str());
-            g_isPlaying = true;
+            g_isPlaying = !g_isPlaying;          
+            if (g_isPlaying)
+            {
+                ChangeToolBarBtnIcon(hBot, ID_MUSIC_PLAY, 3); 
+            }
+            else
+            {
+                ChangeToolBarBtnIcon(hBot, ID_MUSIC_PLAY, 2);
+            }
         }
         break;
         case ID_MUSIC_PAUSE:
@@ -434,7 +478,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case ID_MUSIC_STOP:
         {
             StopPlay();
-            g_isPlaying = false; // 补充停止状态更新
+            g_isPlaying = false;
             g_currentTimeMs = 0; // 重置播放时间
             // 重置进度条
             if (hTrack)
@@ -473,27 +517,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         // 使用 DeferWindowPos + SWP_NOCOPYBITS 防止旧内容复制
         HDWP hdwp = BeginDeferWindowPos(4);
+        if (hListAlbums)
+            hdwp = DeferWindowPos(hdwp, hListAlbums, nullptr, 0, contentY + 28, LEFT_PANEL_WIDTH, contentH - 32, SWP_NOZORDER | SWP_NOCOPYBITS);
 
         if (HWND hTop = GetDlgItem(hWnd, IDC_TOOLBAR_TOP))
-            hdwp = DeferWindowPos(hdwp, hTop, nullptr,
-                0, 0, cx, topBarH,
-                SWP_NOZORDER | SWP_NOCOPYBITS);
+            hdwp = DeferWindowPos(hdwp, hTop, nullptr, 0, 0, cx, topBarH, SWP_NOZORDER | SWP_NOCOPYBITS);
 
         if (HWND hBottom = GetDlgItem(hWnd, IDC_TOOLBAR_BOTTOM))
-            hdwp = DeferWindowPos(hdwp, hBottom, nullptr,
-                0, cy - bottomBarH, cx, bottomBarH,
-                SWP_NOZORDER | SWP_NOCOPYBITS);
+            hdwp = DeferWindowPos(hdwp, hBottom, nullptr, 0, cy - bottomBarH, cx, bottomBarH, SWP_NOZORDER | SWP_NOCOPYBITS);
 
         if (g_hTrackList)
-            hdwp = DeferWindowPos(hdwp, g_hTrackList, nullptr,
-                0, contentY, LEFT_PANEL_WIDTH, contentH,
-                SWP_NOZORDER | SWP_NOCOPYBITS);
+            hdwp = DeferWindowPos(hdwp, g_hTrackList, nullptr, 0, contentY+28, LEFT_PANEL_WIDTH, contentH-32, SWP_NOZORDER | SWP_NOCOPYBITS);
 
         if (g_hWaveView)
-            hdwp = DeferWindowPos(hdwp, g_hWaveView, nullptr,
-                LEFT_PANEL_WIDTH, contentY, cx - LEFT_PANEL_WIDTH, contentH,
-                SWP_NOZORDER | SWP_NOCOPYBITS);
-
+            hdwp = DeferWindowPos(hdwp, g_hWaveView, nullptr, LEFT_PANEL_WIDTH, contentY, cx - LEFT_PANEL_WIDTH, contentH, SWP_NOZORDER | SWP_NOCOPYBITS);
         EndDeferWindowPos(hdwp);
 
         // 强制所有子窗口重绘
