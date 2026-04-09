@@ -13,6 +13,7 @@
 #define IDC_ALBUM_LIST              2010
 #define IDC_WAVE_DRAW_WINDOW        2011  // 波形客户区
 #define IDC_TAB                     2012  // 页选
+#define IDC_SELECT_MUTE             2013  // 复选框
 
 
 // 工具栏按钮ID

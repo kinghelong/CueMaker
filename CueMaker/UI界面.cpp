@@ -41,6 +41,9 @@ double g_scrollOffset = 0.0;
 // TrackBar 子类化
 WNDPROC g_pOldTrackBarProc = nullptr;
 
+//时间
+extern std::vector<MuteRange> timeList;
+
 // ===================================================================
 // TrackBar 子类化窗口过程
 // ===================================================================
@@ -205,48 +208,48 @@ LRESULT CALLBACK WaveCtrlProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
     case WM_LBUTTONDOWN:
     {
         int mouseX = GET_X_LPARAM(lParam);
-
         RECT rc;
         GetClientRect(hWnd, &rc);
         int width = rc.right - rc.left;
+        if (width <= 0) return 0;
 
-        if (width <= 0 || !g_isPlaying)
+        // 检查 Ctrl 是否按下
+        bool ctrlPressed = (wParam & MK_CONTROL) != 0;
+
+        // 计算点击对应时间
+        double zoomedTotalWidth = width * g_zoomFactor;
+        double clickRatio = (mouseX + g_scrollOffset) / zoomedTotalWidth;
+        if (clickRatio < 0.0) clickRatio = 0.0;
+        if (clickRatio > 1.0) clickRatio = 1.0;
+        int clickedMs = (int)(clickRatio * g_musicLengthMs);
+
+        if (ctrlPressed)
         {
-            g_clickTimeRatio = -1.0;
-            clickX = -1;
+            // ===== Ctrl + 左键 → 选取静音区 =====
+            timeList.push_back({ clickedMs, clickedMs }); // 单点，可后续扩展为范围
+            InvalidateRect(hWnd, NULL, FALSE);
+            return 0; // 不执行SeekPlay
+        }
+        else
+        {
+            // ===== 普通左键 → 播放位置 =====
+            g_clickTimeRatio = clickRatio;
+            clickX = mouseX;
+            g_currentTimeMs = clickedMs;
+
+            if (g_isPlaying && g_wav.nSamplesPerSec > 0)
+            {
+                SeekPlay(g_currentTimeMs / 1000.0,
+                    g_wav.nSamplesPerSec,
+                    g_wav.nChannels,
+                    g_wav.wBitsPerSample);
+            }
+
+            InvalidateRect(hWnd, NULL, FALSE);
             return 0;
         }
-
-        // ===== 关键修复：计算点击位置对应的实际时间比例 =====
-        // 公式：(鼠标X + 滚动偏移) / 缩放后总宽度
-        double zoomedTotalWidth = width * g_zoomFactor;
-        g_clickTimeRatio = (mouseX + g_scrollOffset) / zoomedTotalWidth;
-
-        // 限制范围 [0.0, 1.0]
-        if (g_clickTimeRatio < 0.0) g_clickTimeRatio = 0.0;
-        if (g_clickTimeRatio > 1.0) g_clickTimeRatio = 1.0;
-
-        // 更新全局 clickX（用于兼容旧代码，如果不需要可以删除）
-        clickX = mouseX;
-
-        // 计算实际时间（毫秒）并更新播放位置
-        g_currentTimeMs = (int)(g_clickTimeRatio * g_musicLengthMs);
-
-        // 如果正在播放，执行 Seek
-        if (g_isPlaying && g_wav.nSamplesPerSec > 0)
-        {
-            double seekSeconds = g_currentTimeMs / 1000.0;
-            SeekPlay(seekSeconds,
-                g_wav.nSamplesPerSec,
-                g_wav.nChannels,
-                g_wav.wBitsPerSample);
-        }
-
-        // 刷新显示
-        InvalidateRect(hWnd, NULL, FALSE);
-
-        return 0;
     }
+
 
     case WM_RBUTTONDOWN:
     {
@@ -381,6 +384,9 @@ HWND CreateToolbarTop(HWND hWnd, HINSTANCE hInstance)
     // 创建静态文本（音量提示）
     HWND hStaticVolume = CreateWindowEx(0, L"STATIC", L"音量", WS_CHILD | WS_VISIBLE | SS_LEFT, 720, 37, 50, 16, hToolbar, (HMENU)IDC_STATIC_VOLUM_TIP, hInstance, NULL);
     SendMessage(hStaticVolume, WM_SETFONT, (WPARAM)hFont, TRUE);
+    // 创建复选框（在CreateToolbarTop中）
+    HWND hChkMute = CreateWindowEx(0, L"BUTTON", L"手动选取静音区", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 850, 20, 120, 24, hToolbar, (HMENU)IDC_SELECT_MUTE, hInstance, NULL);
+
 
     // 初始化工具栏
     SendMessage(hToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);

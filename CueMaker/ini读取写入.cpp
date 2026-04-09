@@ -2,7 +2,10 @@
 #include<map>
 #include<vector>
 #include<string>
-#include"resource.h"    
+#include"resource.h"  
+#include <strsafe.h>
+#include <algorithm>
+
 bool ReadIniFile(const std::wstring& filePath, std::map<std::wstring, std::wstring>& outData)
 {
 	WCHAR buffer[256];
@@ -213,15 +216,79 @@ int workStationIni(HWND hWnd, std::vector<std::wstring>& albumIniList)
 		if (_wcsicmp(ffd.cFileName, L"CueMakerState.ini") == 0)
 			continue;
 
-		std::wstring fullPath = exeDir;
-		if (fullPath.back() != L'\\')
-			fullPath += L'\\';
-		fullPath += ffd.cFileName;
-
-		albumIniList.push_back(fullPath);
+		albumIniList.push_back(ffd.cFileName);
 
 	} while (FindNextFileW(hFind, &ffd));
 
 	FindClose(hFind);
 	return (int)albumIniList.size();
+}
+
+int readIniFromAlbumToTrackList(WCHAR* iniName, HWND hTrackList)
+{
+	// 1. 获取 exe 目录
+	wchar_t exeDir[MAX_PATH] = { 0 };
+	GetExeDirectory(exeDir, MAX_PATH);
+
+	// 安全拼接路径
+	HRESULT hr = StringCchCat(exeDir, MAX_PATH, iniName);
+	if (FAILED(hr)) {
+		return 0; // 路径拼接失败
+	}
+
+	// 2. 读取 ini 文件
+	std::map<std::wstring, std::wstring> iniData;
+	if (!ReadIniFile(exeDir, iniData)) {
+		return 0; // 读取失败
+	}
+
+	// 3. 收集 TrackInfo
+	std::vector<TrackInfo> tracks;
+	for (const auto& pair : iniData)
+	{
+		const std::wstring& key = pair.first;
+
+		// 筛选以 "Track_" 开头且以 ".Title" 结尾
+		if (key.rfind(L".Title") == key.size() - 6 && key.find(L"Track_") == 0)
+		{
+			std::wstring sectionPart = key.substr(0, key.size() - 6); // 去掉 ".Title"
+
+			// 找下划线位置，提取编号
+			size_t underscorePos = sectionPart.find(L"_");
+			if (underscorePos == std::wstring::npos) continue;
+
+			std::wstring indexStr = sectionPart.substr(underscorePos + 1);
+
+			// 查找对应 ID，如果没有则跳过
+			std::wstring idKey = sectionPart + L".ID";
+			if (iniData.find(idKey) == iniData.end()) continue;
+
+			// 转换编号为 int
+			int trackIndex = 0;
+			try {
+				trackIndex = std::stoi(indexStr);
+			}
+			catch (const std::exception&) {
+				continue; // 转换失败跳过
+			}
+
+			// 保存到 vector
+			TrackInfo track;
+			track.index = trackIndex;
+			track.title = pair.second;
+			tracks.push_back(track);
+		}
+	}
+
+	// 4. 按 trackIndex 排序
+	std::sort(tracks.begin(), tracks.end(), [](const TrackInfo& a, const TrackInfo& b) {
+		return a.index < b.index;
+		});
+
+	// 5. 插入 ListBox
+	for (const auto& track : tracks) {
+		SendMessage(hTrackList, LB_ADDSTRING, 0, (LPARAM)track.title.c_str());
+	}
+
+	return 1;
 }

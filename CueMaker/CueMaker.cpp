@@ -38,6 +38,7 @@ bool g_isDraggingTrackBar = false;
 extern WNDPROC g_pOldTrackBarProc ; // 保存TrackBar原始窗口过程
 extern bool g_isDraggingTrackBar ;    // 拖动标记（仅作用于TrackBar）
 extern HIMAGELIST g_hImgSwitch ;
+std::vector<MuteRange> timeList;
 
 // 全局变量:
 HINSTANCE hInst;
@@ -284,110 +285,49 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     break;
 
     // ===== 修改 WM_HSCROLL 消息处理（核心：标记拖动状态）=====
-    case WM_HSCROLL:
-    {
-        if ((HWND)lParam == hTrack && hTrack)
-        {
-            int scrollCode = LOWORD(wParam);
-
-            switch (scrollCode)
-            {
-            case TB_THUMBTRACK:      // 用户正在拖动滑块（实时）
-                // 设置标记：用户正在拖动，暂停定时器更新TrackBar
-                g_isDraggingTrackBar = true;
-                // 【可选】暂停播放，避免拖动时音频还在走
-                // PausePlay();
-                // g_isPlaying = false;
-                [[fallthrough]]; // 继续执行下方逻辑（获取位置并更新）
-
-            case TB_THUMBPOSITION:   // 用户松开滑块（结束）
-            {
-                int newPosSec = (int)SendMessage(hTrack, TBM_GETPOS, 0, 0);
-                int maxSec = g_musicLengthMs / 1000;
-                if (newPosSec < 0) newPosSec = 0;
-                if (newPosSec > maxSec) newPosSec = maxSec;
-                int newPosMs = newPosSec * 1000;
-
-                // 调用Seek函数跳转音频
-                SeekPlay((double)newPosSec, g_wav.nSamplesPerSec, g_wav.nChannels, g_wav.wBitsPerSample);
-                g_currentTimeMs = newPosMs;
-
-                // 更新时间显示
-                wchar_t buf[32] = { 0 };
-                int cur = newPosMs / 1000;
-                int min = cur / 60;
-                int sec = cur % 60;
-                int total = g_musicLengthMs / 1000;
-                int totalMin = total / 60;
-                int totalSec = total % 60;
-                swprintf_s(buf, _countof(buf), L"%02d:%02d / %02d:%02d", min, sec, totalMin, totalSec);
-                if (hTime) SetWindowText(hTime, buf);
-
-                InvalidateRect(g_hWaveView, NULL, FALSE);
-
-                // 如果是拖动结束，恢复标记（允许定时器更新）
-                if (scrollCode == TB_THUMBPOSITION)
-                {
-                    g_isDraggingTrackBar = false;
-                    // 【可选】恢复播放（如果之前暂停了）
-                    // if (g_isPlaying) StartPlay(extractFileName.c_str());
-                }
-                break;
-            }
-
-            // 其他操作（点击箭头/空白区）：不标记拖动，但正常处理位置
-            case TB_LINEUP:
-            case TB_LINEDOWN:
-            case TB_PAGEUP:
-            case TB_PAGEDOWN:
-            {
-                int newPosSec = (int)SendMessage(hTrack, TBM_GETPOS, 0, 0);
-                int maxSec = g_musicLengthMs / 1000;
-                if (newPosSec < 0) newPosSec = 0;
-                if (newPosSec > maxSec) newPosSec = maxSec;
-                int newPosMs = newPosSec * 1000;
-
-                SeekPlay((double)newPosSec, g_wav.nSamplesPerSec, g_wav.nChannels, g_wav.wBitsPerSample);
-                g_currentTimeMs = newPosMs;
-
-                // 更新时间显示
-                wchar_t buf[32] = { 0 };
-                int cur = newPosMs / 1000;
-                int min = cur / 60;
-                int sec = cur % 60;
-                int total = g_musicLengthMs / 1000;
-                int totalMin = total / 60;
-                int totalSec = total % 60;
-                swprintf_s(buf, _countof(buf), L"%02d:%02d / %02d:%02d", min, sec, totalMin, totalSec);
-                if (hTime) SetWindowText(hTime, buf);
-
-                InvalidateRect(g_hWaveView, NULL, FALSE);
-                break;
-            }
-            }
-            return 0;
-        }
-        break;
-    }
+    
     case WM_COMMAND:
     {
         int wmId = LOWORD(wParam);
         int wmEvent = HIWORD(wParam);
-
-        // 处理 ListBox 选择事件
-        if (wmId == 10101 && wmEvent == LBN_SELCHANGE)
-        {
-            int sel = (int)SendMessage(g_hTrackList, LB_GETCURSEL, 0, 0);
-            if (sel != LB_ERR) {
-                // 执行你的波形跳转或状态更新逻辑
-                g_waveOffsetX = 0.0;
-                InvalidateRect(g_hWaveView, nullptr, FALSE);
-            }
-            return 0;
-        }
-
         switch (wmId)
         {
+        case IDC_ALBUM_LIST:
+        {
+            if (wmEvent == LBN_SELCHANGE)
+            {          // 清空 ListBox
+                SendMessage(g_hTrackList, LB_RESETCONTENT, 0, 0);
+
+                int itemNum = (int)SendMessage(hListAlbums, LB_GETCURSEL, 0, 0);
+
+                if (itemNum != LB_ERR)
+                {
+                    int textLen = (int)SendMessage(hListAlbums, LB_GETTEXTLEN, (WPARAM)itemNum, 0);
+                    std::vector<wchar_t> buffer(textLen + 1);
+                    SendMessage(hListAlbums, LB_GETTEXT, (WPARAM)itemNum, (LPARAM)buffer.data());
+                    if (buffer.data()[0] != L'\0') {
+                        readIniFromAlbumToTrackList(buffer.data(), g_hTrackList);
+                    }
+                }
+            }
+        }
+        break;
+        case IDC_LIST_MUSIC:
+        {
+            if (extractFileName.empty())
+                return 0;
+            if (g_isPlaying)
+            {
+                ChangeToolBarBtnIcon(hBot, ID_MUSIC_PLAY, 3);
+            }
+            else
+            {
+                ChangeToolBarBtnIcon(hBot, ID_MUSIC_PLAY, 2);
+            }
+            
+            PlaySelectedTrack(g_hTrackList, extractFileName.c_str(), timeList);
+        }
+            break;
         case ID_OPEN:
         {
         }
@@ -410,6 +350,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 std::wstring cueMaker = std::wstring(szExeDir) + L"CueMakerState.ini";
                 saveWorkStateToIni(cueMaker.c_str(), g_Work.audioPath.c_str(), NULL, NULL, 0);// 保存工作状态到INI文件
                 LoadWavFile(extractFileName);
+                timeList = GetMuteZones();
                 InvalidateRect(g_hWaveView, nullptr, TRUE);
                 UpdateWindow(g_hWaveView);
             }
@@ -457,7 +398,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             if (extractFileName.empty())
                 return 0;
-            StartPlay(extractFileName.c_str());
+            StartPlay(extractFileName.c_str(),  0);
             g_isPlaying = !g_isPlaying;          
             if (g_isPlaying)
             {

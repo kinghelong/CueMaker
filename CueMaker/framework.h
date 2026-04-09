@@ -85,6 +85,12 @@ struct LastSessionState
 	AlbumInfo info;
 	std::wstring audioFilePath;
 };
+struct MuteRange
+{
+	INT64 start;
+	INT64 end;
+};
+
 struct WorkContext
 {
 	std::wstring audioPath;
@@ -116,6 +122,7 @@ bool saveWorkStateToIni(const wchar_t* iniPath, const wchar_t* audioFilePath, co
 bool readWorkStateFromIni(const wchar_t* iniPath, std::wstring& outAudioFile, std::wstring& outAlbumIniFile, std::wstring& outCueFile, int& outWorkCompleted);// 从INI文件读取工作状态
 bool ReadIniFile(const std::wstring& filePath, std::map<std::wstring, std::wstring>& outData);
 int workStationIni(HWND hWnd, std::vector<std::wstring>& albumIniList);
+int readIniFromAlbumToTrackList(WCHAR* iniName, HWND hTrackList);
 
 
 //音频处理相关
@@ -128,13 +135,16 @@ int read_wav_header(HANDLE hFile, wave_header* pWaveHeader);
 //cue文件读写相关
 AlbumInfo GetAlbumInfoFromIni();
 bool GenerateCueFile();
+std::vector<MuteRange> GetMuteZones();
 
 //播放音乐
 unsigned int __stdcall PlayAudioThread(void* pParam);
-void StartPlay(const wchar_t* fileName);
+void StartPlay(const wchar_t* fileName, double playPosition);
 void PausePlay();
 void SeekPlay(double seconds, int sampleRate, int channels, int bitsPerSample);
 void StopPlay();
+void PlaySelectedTrack(HWND hTrackList, const wchar_t* audioFileName, const std::vector<MuteRange>& timeList);
+
 
 //播放进度ui更新
 void CalculateFinalLayout(RECT clientRect, int numChannels, RECT& waveArea, RECT& timeArea, ChannelLayout& layout);

@@ -1,6 +1,7 @@
 #include"framework.h"
 #include <map>
 
+extern wave_header g_wavHeader;
 extern std::vector<int16_t> g_leftPcmData;  // 左声道PCM数据
 extern std::vector<int16_t> g_rightPcmData; // 右声道PCM数据
 wchar_t audioFilePath[MAX_PATH] = { 0 };
@@ -87,11 +88,6 @@ AlbumInfo GetAlbumInfoFromIni()
     }
     return info;
 }
-struct MuteRange
-{
-    INT64 start;
-    INT64 end;
-};
 
 std::vector<MuteRange> GetMuteZones()
 {
@@ -99,7 +95,7 @@ std::vector<MuteRange> GetMuteZones()
     if (g_leftPcmData.empty()) return zones;
 
     const int SILENCE_THRESHOLD = 150;      // 阈值没问题
-    const int MIN_SILENCE_LEN = 44100;      // 至少1秒静音才算间歇
+    const int MIN_SILENCE_LEN = g_wavHeader.sample_rate;      // 至少1秒静音才算间歇
     const int MIN_SOUND_CONFIRM = 1000;     // 只要有约0.02秒声音，就判定音乐开始
 
     size_t sampleCount = min(g_leftPcmData.size(), g_rightPcmData.size());

@@ -45,6 +45,8 @@ static bool g_ctrlInited = false;
 
 extern wave_header g_wavHeader;
 extern int clickX, g_currentTimeMs, g_musicLengthMs;
+extern bool g_isPlaying ;
+
 
 // =======================================================
 // WAV 文件解析
@@ -436,7 +438,7 @@ void InitPlayer()
     }
 }
 
-void StartPlay(const wchar_t* file)
+void StartPlay(const wchar_t* file,double playPosition)
 {
     if (!file) return;
 
@@ -450,7 +452,7 @@ void StartPlay(const wchar_t* file)
     g_ctrl.running = false;
     g_ctrl.paused = false;
     g_ctrl.stopRequested = false;
-    g_ctrl.seekPosition = -1;
+    g_ctrl.seekPosition = playPosition;
     LeaveCriticalSection(&g_ctrl.cs);
 
     // 复制文件名
@@ -534,4 +536,36 @@ bool IsPaused()
     result = g_ctrl.paused;
     LeaveCriticalSection(&g_ctrl.cs);
     return result;
+}
+
+// 点击列表曲目播放
+void PlaySelectedTrack(HWND hTrackList, const wchar_t* audioFileName, const std::vector<MuteRange>& timeList)
+{
+    // 先停止旧播放
+    StopPlay();
+
+    if (timeList.empty()) {
+        MessageBox(NULL, L"曲目时间还未生成，请稍等...", L"提示", MB_OK);
+        return;
+    }
+
+    // 获取当前选中项
+    int sel = (int)SendMessage(hTrackList, LB_GETCURSEL, 0, 0);
+    if (sel == LB_ERR || sel >= (int)timeList.size()) {
+        return; // 无效选择
+    }
+
+    // 获取曲目起始样本
+    LONGLONG startSample = timeList[sel].start;
+
+    // 转换为字节偏移
+    LONGLONG seekOffsetBytes = startSample * g_wavHeader.block_align;
+
+    // 启动播放线程并跳转到目标位置
+    StartPlay(audioFileName, seekOffsetBytes);
+
+    // 正确计算毫秒时间
+    g_currentTimeMs = (int)(startSample * 1000 / g_wavHeader.sample_rate);
+
+    g_isPlaying = true;
 }

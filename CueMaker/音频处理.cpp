@@ -1,3 +1,5 @@
+#define NOMINMAX
+
 #include"framework.h"
 #include"Macro.h"
 #include <thread>
@@ -14,6 +16,8 @@ int musicLengthInMs = 0, musicLengthInS = 0;
 extern double g_zoomFactor;
 extern double g_scrollOffset;
 extern int clickX, g_currentTimeMs, g_musicLengthMs;
+extern bool g_isPlaying;
+extern std::vector<MuteRange> timeList;
 
 // ===== 新增：存储点击位置对应的实际音频时间 =====
 extern double g_clickTimeRatio ;  // 点击位置对应的时间比例 (0.0 ~ 1.0)
@@ -33,8 +37,7 @@ bool LoadWavFile(const std::wstring& wavPath)
         return false;
     }
 
-    HANDLE hFile = CreateFile(wavPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
-        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    HANDLE hFile = CreateFile(wavPath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
     {
         MessageBox(NULL, L"无法打开文件", L"错误", MB_OK);
@@ -191,76 +194,140 @@ void CalculateFinalLayout(RECT clientRect, int numChannels, RECT& waveArea,
 
 void DrawDualChannelWaveform(HDC hdc, HWND hWnd)
 {
-    if (!g_isWavLoaded) return;
+    if (!g_isWavLoaded || g_leftPcmData.empty()) return;
 
-    RECT rcTotal;
-    GetClientRect(hWnd, &rcTotal);
-    int width = rcTotal.right - rcTotal.left;
-    int height = rcTotal.bottom - rcTotal.top;
+    RECT rcClient;
+    GetClientRect(hWnd, &rcClient);
+    int width = rcClient.right - rcClient.left;
+    int height = rcClient.bottom - rcClient.top;
     if (width <= 0 || height <= 0) return;
 
-    // 双缓冲准备
+    // --- 1. 双缓冲初始化 ---
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP memBmp = CreateCompatibleBitmap(hdc, width, height);
     HBITMAP oldBmp = (HBITMAP)SelectObject(memDC, memBmp);
 
-    // 背景填充
-    HBRUSH blackBrush = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    FillRect(memDC, &rcTotal, blackBrush);
+    // 背景涂黑
+    FillRect(memDC, &rcClient, (HBRUSH)GetStockObject(BLACK_BRUSH));
 
-    // 计算区域分配
+    // 计算布局 (假设你已有的逻辑)
     RECT waveArea, timeArea;
     ChannelLayout layout;
-    CalculateFinalLayout(rcTotal, g_wavHeader.channels, waveArea, timeArea, layout);
+    CalculateFinalLayout(rcClient, g_wavHeader.channels, waveArea, timeArea, layout);
 
-    // 绘制时间轴
-    DrawTimeLine(memDC, timeArea, musicLengthInS);
+    // 绘制时间轴 (略过，假设正常)
+    DrawTimeLine(memDC, timeArea, g_musicLengthMs / 1000.0);
 
-    // 绘制波形
-    DrawSingleWaveform(memDC, layout.rectLeft, g_leftPcmData, RGB(0, 255, 0));
-    if (layout.isStereo) {
-        DrawSingleWaveform(memDC, layout.rectRight, g_rightPcmData, RGB(255, 255, 0));
+    // --- 2. 核心坐标映射参数 ---
+    // 总宽度 = 基础宽度 * 缩放因子
+    double totalWidth = (double)width * g_zoomFactor;
+    // 总采样点数
+    size_t totalSamples = g_leftPcmData.size();
 
-        // 分离带装饰线
-        HPEN darkPen = CreatePen(PS_SOLID, 1, RGB(50, 50, 50));
-        HPEN oldPen = (HPEN)SelectObject(memDC, darkPen);
-        int midY = layout.rectLeft.bottom + (layout.rectRight.top - layout.rectLeft.bottom) / 2;
-        MoveToEx(memDC, 0, midY, NULL);
-        LineTo(memDC, width, midY);
-        SelectObject(memDC, oldPen);
-        DeleteObject(darkPen);
-    }
+    // Lambda: 将采样点索引转换为当前屏幕的 X 坐标
+    auto SampleToX = [&](INT64 sampleIdx) -> int {
+        double ratio = (double)sampleIdx / totalSamples;
+        return (int)(ratio * totalWidth - g_scrollOffset);
+        };
 
-    // ===== 修复后的播放线绘制 =====   
-    {
-        // 计算播放线的屏幕 X 坐标
-        double zoomedTotalWidth = width * g_zoomFactor;
-        int playX = (int)(g_clickTimeRatio * zoomedTotalWidth - g_scrollOffset);
+    // --- 3. 绘制静音高亮区 (AlphaBlend) ---
+    if (!timeList.empty()) {
+        HDC tempDC = CreateCompatibleDC(memDC);
+        BLENDFUNCTION bf = { AC_SRC_OVER, 0, 160, 0 }; // 160 为透明度
+        HBRUSH hMuteBrush = CreateSolidBrush(RGB(128, 0, 255));
 
-        // 只在可见范围内绘制
-        if (playX >= 0 && playX <= width)
-        {
-            HPEN hPen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
-            HPEN hOldPen = (HPEN)SelectObject(memDC, hPen);
+        for (const auto& zone : timeList) {
+            int startX = SampleToX(zone.start);
+            int endX = SampleToX(zone.end);
 
-            // 绘制竖线
-            MoveToEx(memDC, playX, 0, NULL);
-            LineTo(memDC, playX, waveArea.bottom);
+            // 裁剪：只画在可见区域内的
+            if (endX < 0 || startX > width) continue;
+            int drawX = std::max(0, startX);
+            int drawW = std::min(width, endX) - drawX;
+            if (drawW <= 0) continue;
 
-            SelectObject(memDC, hOldPen);
-            DeleteObject(hPen);
+            // 对应波形区的高度
+            int drawH = waveArea.bottom - waveArea.top;
+
+            // 创建用于混合的临时位图
+            HBITMAP tempBmp = CreateCompatibleBitmap(memDC, drawW, drawH);
+            HBITMAP oldTempBmp = (HBITMAP)SelectObject(tempDC, tempBmp);
+
+            RECT fillR = { 0, 0, drawW, drawH };
+            FillRect(tempDC, &fillR, hMuteBrush);
+
+            AlphaBlend(memDC, drawX, waveArea.top, drawW, drawH,
+                tempDC, 0, 0, drawW, drawH, bf);
+
+            SelectObject(tempDC, oldTempBmp);
+            DeleteObject(tempBmp);
         }
+        DeleteObject(hMuteBrush);
+        DeleteDC(tempDC);
     }
 
-    // 最终拷贝到屏幕
-    BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+    // --- 4. 绘制波形 (带步长优化) ---
+    auto DrawWave = [&](RECT rect, const std::vector<short>& data, COLORREF color) {
+        if (data.empty()) return;
+        HPEN hPen = CreatePen(PS_SOLID, 1, color);
+        HPEN oldPen = (HPEN)SelectObject(memDC, hPen);
 
-    // 清理资源
+        int midY = rect.top + (rect.bottom - rect.top) / 2;
+        int maxHeight = (rect.bottom - rect.top) / 2;
+
+        // 根据缩放决定步长：1个像素可能对应成千上万个点
+        // 步长 = (总采样点 / 总宽度) 保证每个像素只画一次，防止卡死
+        double samplesPerPixel = totalSamples / totalWidth;
+        int step = std::max(1, (int)samplesPerPixel);
+
+        MoveToEx(memDC, SampleToX(0), midY, NULL);
+
+        // 只遍历可见范围内的采样点
+        INT64 startIdx = (INT64)(g_scrollOffset / totalWidth * totalSamples);
+        INT64 endIdx = (INT64)((g_scrollOffset + width) / totalWidth * totalSamples);
+        startIdx = std::max((INT64)0, startIdx);
+        endIdx = std::min((INT64)totalSamples, endIdx);
+
+        for (INT64 i = startIdx; i < endIdx; i += step) {
+            int x = SampleToX(i);
+            // 将 16-bit PCM (-32768 ~ 32767) 映射到 Y 坐标
+            int yOffset = (int)((double)data[i] / 32768.0 * maxHeight);
+            LineTo(memDC, x, midY - yOffset);
+        }
+
+        SelectObject(memDC, oldPen);
+        DeleteObject(hPen);
+        };
+
+    DrawWave(layout.rectLeft, g_leftPcmData, RGB(0, 255, 0));
+    if (layout.isStereo) {
+        DrawWave(layout.rectRight, g_rightPcmData, RGB(255, 255, 0));
+
+        // 装饰线
+        HPEN darkPen = CreatePen(PS_SOLID, 1, RGB(50, 50, 50));
+        HPEN oldP = (HPEN)SelectObject(memDC, darkPen);
+        int midY = layout.rectLeft.bottom + (layout.rectRight.top - layout.rectLeft.bottom) / 2;
+        MoveToEx(memDC, 0, midY, NULL); LineTo(memDC, width, midY);
+        SelectObject(memDC, oldP); DeleteObject(darkPen);
+    }
+
+    // --- 5. 绘制播放线 ---
+    double playRatio = g_isPlaying ? ((double)g_currentTimeMs / g_musicLengthMs) : g_clickTimeRatio;
+    int playX = (int)(playRatio * totalWidth - g_scrollOffset);
+
+    if (playX >= 0 && playX <= width) {
+        HPEN pPen = CreatePen(PS_SOLID, 2, RGB(255, 0, 0));
+        HPEN oPen = (HPEN)SelectObject(memDC, pPen);
+        MoveToEx(memDC, playX, 0, NULL); LineTo(memDC, playX, height);
+        SelectObject(memDC, oPen); DeleteObject(pPen);
+    }
+
+    // --- 6. 拷贝输出与清理 ---
+    BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
     SelectObject(memDC, oldBmp);
     DeleteObject(memBmp);
     DeleteDC(memDC);
 }
-
 bool DrawTimeLine(HDC hdc, RECT rect, double musicLengthInS)
 {
     int width = rect.right - rect.left;
